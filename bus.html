@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>B3A 富泰邨 → 深圳灣口岸 · Next Buses</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --line: #21262d;
+    --accent: #2f81f7;
+    --green: #3fb950;
+    --amber: #d29922;
+    --red: #f85149;
+    --text: #e6edf3;
+    --muted: #8b949e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK", "Noto Sans HK", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px calc(28px + env(safe-area-inset-bottom));
+  }
+  header { text-align: center; margin-bottom: 22px; width: 100%; max-width: 520px; }
+  .route-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.7rem;
+    letter-spacing: 1px;
+    padding: 5px 20px;
+    border-radius: 12px;
+  }
+  h1 { font-size: 1.05rem; font-weight: 600; margin-top: 14px; line-height: 1.5; }
+  h1 .arrow { color: var(--accent); margin: 0 4px; }
+  h1 .en { display: block; font-size: .85rem; color: var(--muted); font-weight: 400; }
+  .sub { color: var(--muted); font-size: .82rem; margin-top: 8px; }
+  main { width: 100%; max-width: 520px; }
+  .buses { display: flex; flex-direction: column; gap: 12px; }
+  .bus {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    animation: fadein .3s ease;
+  }
+  .bus.next { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .meta { min-width: 0; }
+  .dest { font-weight: 600; font-size: .98rem; }
+  .dest .en { color: var(--muted); font-weight: 400; font-size: .82rem; }
+  .tag { font-size: .74rem; color: var(--muted); margin-top: 5px; }
+  .tag .rmk { color: var(--amber); }
+  .mins { text-align: right; white-space: nowrap; flex-shrink: 0; }
+  .mins .n { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .mins .unit { font-size: .75rem; color: var(--muted); }
+  .soon .n { color: var(--green); }
+  .mid .n { color: var(--amber); }
+  .later .n { color: var(--text); }
+  .none {
+    background: var(--card);
+    border: 1px dashed #30363d;
+    border-radius: 14px;
+    padding: 26px 18px;
+    text-align: center;
+    color: var(--muted);
+    font-size: .9rem;
+    line-height: 1.7;
+  }
+  footer {
+    margin-top: 22px;
+    width: 100%;
+    max-width: 520px;
+    color: var(--muted);
+    font-size: .76rem;
+    text-align: center;
+    line-height: 1.8;
+  }
+  footer a { color: #6ea8fe; text-decoration: none; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 6px; }
+  .dot.err { background: var(--red); }
+  .dot.busy { background: var(--amber); }
+  #countdown { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="route-badge">B3A</span>
+  <h1>
+    富泰邨 Fu Tai Estate <span class="arrow">→</span> 深圳灣口岸 Shenzhen Bay Port
+    <span class="en">Citybus · 富泰邨, 青山公路 (stop 003261) · next departures</span>
+  </h1>
+  <div class="sub">實時預計到站時間 · real-time ETA</div>
+</header>
+
+<main>
+  <div class="buses" id="buses">
+    <div class="none">載入中… Loading…</div>
+  </div>
+</main>
+
+<footer>
+  <div><span class="dot" id="statusDot"></span><span id="status">載入中…</span></div>
+  <div>每 30 秒自動更新 · auto-refresh every 30s · next update in <span id="countdown">30</span>s</div>
+  <div>Data: <a href="https://data.gov.hk/en-data/dataset/ctb-eta-transport-realtime-eta" target="_blank" rel="noopener">DATA.GOV.HK</a> · Citybus Next Bus ETA API</div>
+</footer>
+
+<script>
+const ROUTE    = 'B3A';
+const STOP_ID  = '003261';
+const DIR      = 'O';                                  // O = towards 深圳灣口岸 Shenzhen Bay Port
+const API      = `https://rt.data.gov.hk/v2/transport/citybus/eta/ctb/${STOP_ID}/${ROUTE}`;
+const FALLBACK = `https://rt.data.gov.hk/v1/transport/batch/stop-eta/ctb/${STOP_ID}`;
+const REFRESH_MS = 30000;
+const TICK_MS    = 1000;
+
+const busesEl = document.getElementById('buses');
+const statusEl = document.getElementById('status');
+const dotEl = document.getElementById('statusDot');
+const cdEl = document.getElementById('countdown');
+
+let nextFetch = Date.now() + REFRESH_MS;
+let lastGood = null;   // [{ t: epochMs, destTc, destEn, rmk }]
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  dotEl.className = 'dot' + (cls ? ' ' + cls : '');
+}
+
+function clock(epochMs) {
+  return new Date(epochMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function render() {
+  const now = Date.now();
+  const items = (lastGood || [])
+    .map(x => ({ ...x, m: (x.t - now) / 60000 }))
+    .filter(x => x.m > -0.5)
+    .sort((a, b) => a.t - b.t);
+
+  if (!items.length) {
+    const msg = lastGood === null
+      ? '載入中… Loading…'
+      : '暫時沒有預計到站時間<br>No upcoming buses right now (may be outside service hours)';
+    busesEl.innerHTML = '<div class="none">' + msg + '</div>';
+    return;
+  }
+
+  busesEl.innerHTML = items.map((x, i) => {
+    const m = x.m;
+    const cls = m < 5 ? 'soon' : (m < 15 ? 'mid' : 'later');
+    const n = Math.max(0, Math.round(m));
+    const label = n === 0 ? 'NOW' : n;
+    const rmk = x.rmk ? ` · <span class="rmk">${x.rmk}</span>` : '';
+    return `<div class="bus ${i === 0 ? 'next' : ''} ${cls}">
+      <div class="meta">
+        <div class="dest">${x.destTc} <span class="en">${x.destEn}</span></div>
+        <div class="tag">${i === 0 ? '下一班 Next bus' : '第 ' + (i + 1) + ' 班 Bus ' + (i + 1)} · ${clock(x.t)}${rmk}</div>
+      </div>
+      <div class="mins">
+        <div class="n">${label}</div>
+        <div class="unit">${n === 0 ? 'arriving' : 'min'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function normalise(entries) {
+  return entries
+    .filter(e => e && e.route === ROUTE && e.dir === DIR && e.eta)
+    .map(e => ({
+      t: new Date(e.eta).getTime(),
+      destTc: e.dest_tc || e.dest || '深圳灣口岸',
+      destEn: e.dest_en || 'Shenzhen Bay Port',
+      rmk: e.rmk_tc || e.rmk_en || ''
+    }))
+    .filter(e => !isNaN(e.t))
+    .sort((a, b) => a.t - b.t);
+}
+
+async function fetchEta() {
+  setStatus('更新中… Updating…', 'busy');
+  try {
+    let res = await fetch(API, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    let json = await res.json();
+
+    if (!json.data || !json.data.length) {
+      // fall back to the batch stop-eta API
+      res = await fetch(FALLBACK, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      json = await res.json();
+    }
+
+    lastGood = normalise(json.data || []);
+    setStatus('實時 Live · updated ' + new Date().toLocaleTimeString('en-GB'), '');
+    render();
+  } catch (err) {
+    setStatus(`更新失敗 Update failed (${err.message}) · 將自動重試 retrying`, 'err');
+    render();
+  } finally {
+    nextFetch = Date.now() + REFRESH_MS;
+  }
+}
+
+setInterval(() => {
+  cdEl.textContent = Math.max(0, Math.ceil((nextFetch - Date.now()) / 1000));
+  render();               // live countdown of the minutes shown
+}, TICK_MS);
+
+setInterval(fetchEta, REFRESH_MS);
+fetchEta();
+</script>
+</body>
+</html>
